@@ -317,7 +317,8 @@ def create_stock_chart(ticker, data, result, interval):
 
         if i < len(x_positions):
             # Use add_shape with explicit axis references for row 4
-            # Row 4 with secondary_y uses x4 for x-axis and y7 for primary y-axis
+            # Subplot axis naming: row1=y, row2=y2/y3, row3=y4, row4=y5/y6
+            # x-axes: x (row1), x2 (row2), x3 (row3), x4 (row4)
             fig.add_shape(
                 type="rect",
                 x0=x_positions[i] - 0.5, x1=x_positions[i] + 0.5,
@@ -325,7 +326,7 @@ def create_stock_chart(ticker, data, result, interval):
                 fillcolor=color,
                 line_width=0,
                 layer="below",
-                xref="x4", yref="y7"
+                xref="x4", yref="y5"
             )
 
     # Velocity line (primary y-axis)
