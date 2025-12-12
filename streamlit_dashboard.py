@@ -397,12 +397,19 @@ def create_stock_chart(ticker, data, result, interval):
         title_text += f" | {gain_1d:+.2f}%"
     title_text += f" | ${current_price:.2f}</b>"
 
+    # Calculate width based on data points to maintain proportionality
+    # Minimum 800px, scale up for more data points
+    min_width = 800
+    width_per_point = 8  # pixels per data point
+    calculated_width = max(min_width, len(data) * width_per_point)
+
     fig.update_layout(
         title=dict(text=title_text, font=dict(size=14)),
         height=700,
+        width=calculated_width,
         showlegend=False,
         xaxis_rangeslider_visible=False,
-        margin=dict(l=60, r=60, t=50, b=40),
+        margin=dict(l=60, r=60, t=50, b=60),
         hovermode='x unified'
     )
 
@@ -715,7 +722,8 @@ def main():
 
                         if not display_data.empty:
                             fig = create_stock_chart(ticker, display_data, result, interval)
-                            st.plotly_chart(fig, use_container_width=True)
+                            # Don't force container width - let chart maintain proportions
+                            st.plotly_chart(fig, use_container_width=False)
                         else:
                             st.warning(f"No data for {ticker}")
                     else:
