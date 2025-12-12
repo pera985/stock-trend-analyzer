@@ -254,22 +254,6 @@ def create_stock_chart(ticker, data, result, interval):
             fig.add_vline(x=pos, line_color='red', line_width=1,
                           line_dash='solid', opacity=1.0)
 
-        # Add legend entries for market hours (invisible traces)
-        if market_open_positions:
-            fig.add_trace(
-                go.Scatter(x=[None], y=[None], mode='lines',
-                           name='Market Open 8:30',
-                           line=dict(color='green', width=2)),
-                row=1, col=1
-            )
-        if market_close_positions:
-            fig.add_trace(
-                go.Scatter(x=[None], y=[None], mode='lines',
-                           name='Market Close 3:00 PM',
-                           line=dict(color='red', width=2)),
-                row=1, col=1
-            )
-
     # ============================================
     # PANEL 2: VOLUME WITH SMA5/SMA20
     # ============================================
@@ -416,18 +400,9 @@ def create_stock_chart(ticker, data, result, interval):
     fig.update_layout(
         title=dict(text=title_text, font=dict(size=14)),
         height=700,
-        showlegend=True,
-        legend=dict(
-            orientation='h',
-            yanchor='bottom',
-            y=1.02,
-            xanchor='left',
-            x=0,
-            font=dict(size=9),
-            bgcolor='rgba(255,255,255,0.8)'
-        ),
+        showlegend=False,
         xaxis_rangeslider_visible=False,
-        margin=dict(l=60, r=60, t=80, b=40),
+        margin=dict(l=60, r=60, t=50, b=40),
         hovermode='x unified'
     )
 
