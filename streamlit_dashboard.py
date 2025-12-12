@@ -474,9 +474,10 @@ def create_heatmap(results):
         x=scores,
         orientation='h',
         marker_color=colors,
+        marker_opacity=1.0,
         text=[f"{s:.1f}" for s in scores],
         textposition='outside',
-        textfont=dict(color='black', size=11),
+        textfont=dict(color='rgba(0,0,0,1)', size=11),
         hovertemplate='%{customdata[0]}<br>Score: %{x:.1f}<br>Gain: %{customdata[1]:+.1f}%<extra></extra>',
         customdata=list(zip(tickers, daily_gains))
     ))
@@ -492,17 +493,19 @@ def create_heatmap(results):
             x=-0.3, y=i,
             text=f"<b>{ticker}</b>",
             showarrow=False,
-            font=dict(size=10),
-            xanchor='right'
+            font=dict(size=10, color='rgba(0,0,0,1)'),
+            xanchor='right',
+            opacity=1.0
         ))
-        # Gain label on right
-        gain_color = 'green' if gain >= 0 else 'red'
+        # Gain label on right - use rgba for full opacity
+        gain_color = 'rgba(0,128,0,1)' if gain >= 0 else 'rgba(255,0,0,1)'
         annotations.append(dict(
             x=6.5, y=i,
             text=f"<b>{gain:+.1f}%</b>",
             showarrow=False,
             font=dict(size=12, color=gain_color),
-            xanchor='left'
+            xanchor='left',
+            opacity=1.0
         ))
 
     fig.update_layout(
