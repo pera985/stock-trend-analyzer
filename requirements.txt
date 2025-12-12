@@ -1,0 +1,26 @@
+# Stock Trend Analyzer - Requirements for Streamlit Cloud Deployment
+# Run: pip install -r requirements.txt
+
+# Web framework
+streamlit>=1.28.0
+
+# Data visualization
+plotly>=5.18.0
+matplotlib>=3.7.0
+
+# Data processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# API client
+polygon-api-client>=1.12.0
+requests>=2.31.0
+
+# Technical analysis
+scipy>=1.11.0
+
+# Timezone handling
+pytz>=2023.3
+
+# File watching (for local development)
+watchdog>=3.0.0
