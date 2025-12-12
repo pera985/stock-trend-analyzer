@@ -1,0 +1,14 @@
+mv API_SETUP_GUIDE.md API_SETUP_GUIDE.txt
+mv FLOWCHART_README.md FLOWCHART_README.txt
+mv LOGGING_ENHANCEMENTS.md LOGGING_ENHANCEMENTS.txt
+mv LOGGING_GUIDE.md LOGGING_GUIDE.txt
+mv LOGGING_QUICK_REF.md LOGGING_QUICK_REF.txt
+mv QUICK_REFERENCE.md QUICK_REFERENCE.txt
+mv QUICKSTART_AlphaVantage.md QUICKSTART_AlphaVantage.txt
+mv QUICKSTART.md QUICKSTART.txt
+mv README_AlphaVantage.md README_AlphaVantage.txt
+mv README.md README.txt
+mv requirements.md requirements.txt
+mv sample_tickers.md sample_tickers.txt
+mv START_HERE.md START_HERE.txt
+mv WHY_ALPHA_VANTAGE.md WHY_ALPHA_VANTAGE.txt

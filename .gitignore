@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+output/
+logs/
+csv/
+csv_old/
+trending_charts/
+*.log
+
+# Old/backup files
+0_OLD/
+*.docx
+scripts_copies_25-1109_pys/
+support_docs/OLD/
+
+# Keep specific txt files
+*.txt
+!requirements.txt
+!input_files/*.txt
+
+# Backup/alternative API key versions
+*_AV_api-key.py
+
+# Sensitive
+.env
+*.key
+secrets.toml
+
+# Claude
+.claude/
