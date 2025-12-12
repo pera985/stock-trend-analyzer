@@ -475,8 +475,8 @@ def create_heatmap(results):
         orientation='h',
         marker_color=colors,
         text=[f"{s:.1f}" for s in scores],
-        textposition='inside',
-        textfont=dict(color='white', size=10),
+        textposition='outside',
+        textfont=dict(color='black', size=11),
         hovertemplate='%{customdata[0]}<br>Score: %{x:.1f}<br>Gain: %{customdata[1]:+.1f}%<extra></extra>',
         customdata=list(zip(tickers, daily_gains))
     ))
@@ -498,20 +498,20 @@ def create_heatmap(results):
         # Gain label on right
         gain_color = 'green' if gain >= 0 else 'red'
         annotations.append(dict(
-            x=6.3, y=i,
+            x=6.5, y=i,
             text=f"<b>{gain:+.1f}%</b>",
             showarrow=False,
-            font=dict(size=9, color=gain_color),
+            font=dict(size=12, color=gain_color),
             xanchor='left'
         ))
 
     fig.update_layout(
         title=dict(text="<b>All Stocks by Score</b><br><sub>(Color = Daily Gain)</sub>",
                    font=dict(size=12)),
-        xaxis=dict(title="Score (out of 6)", range=[-0.5, 7], dtick=1),
+        xaxis=dict(title="Score (out of 6)", range=[-0.5, 7.5], dtick=1),
         yaxis=dict(showticklabels=False, autorange='reversed'),
         height=max(400, len(tickers) * 28),
-        margin=dict(l=80, r=70, t=60, b=40),
+        margin=dict(l=80, r=80, t=60, b=40),
         annotations=annotations,
         showlegend=False
     )
