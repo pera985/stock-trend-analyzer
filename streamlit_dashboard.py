@@ -291,8 +291,14 @@ def create_stock_chart(ticker, data, result, interval):
     # ============================================
 
     # Add quadrant shading based on velocity/acceleration signs
+    # Using shapes with explicit axis references for proper subplot positioning
     vel_values = velocity.values
     acc_values = acceleration.values
+
+    # Get y-axis range for panel 4 (velocity)
+    vel_min, vel_max = velocity.min(), velocity.max()
+    vel_padding = (vel_max - vel_min) * 0.1 if vel_max != vel_min else 1
+    y_range = [vel_min - vel_padding, vel_max + vel_padding]
 
     for i in range(len(vel_values)):
         vel_pos = vel_values[i] > 0
@@ -308,10 +314,16 @@ def create_stock_chart(ticker, data, result, interval):
             color = COLOR_VEL_NEG_ACC_NEG
 
         if i < len(x_positions):
-            fig.add_vrect(
+            # Use add_shape with explicit axis references for row 4
+            # Row 4 with secondary_y uses x4 for x-axis and y7 for primary y-axis
+            fig.add_shape(
+                type="rect",
                 x0=x_positions[i] - 0.5, x1=x_positions[i] + 0.5,
-                fillcolor=color, layer="below", line_width=0,
-                row=4, col=1
+                y0=y_range[0], y1=y_range[1],
+                fillcolor=color,
+                line_width=0,
+                layer="below",
+                xref="x4", yref="y7"
             )
 
     # Velocity line (primary y-axis)
@@ -369,7 +381,7 @@ def create_stock_chart(ticker, data, result, interval):
     fig.update_yaxes(title_text="Price ($)", row=2, col=1, secondary_y=True)
     fig.update_yaxes(title_text="RSI", range=[0, 100], row=3, col=1)
     fig.update_yaxes(title_text="Velocity", row=4, col=1, secondary_y=False,
-                     title_font=dict(color=VELOCITY_COLOR))
+                     title_font=dict(color=VELOCITY_COLOR), range=y_range)
     fig.update_yaxes(title_text="Accel", row=4, col=1, secondary_y=True,
                      title_font=dict(color=ACCEL_COLOR))
 
