@@ -397,30 +397,39 @@ def create_stock_chart(ticker, data, result, interval):
         title_text += f" | {gain_1d:+.2f}%"
     title_text += f" | ${current_price:.2f}</b>"
 
+    # Global font settings - all black with 100% opacity
+    black_font = 'rgba(0,0,0,1)'
+
     fig.update_layout(
-        title=dict(text=title_text, font=dict(size=14)),
+        title=dict(text=title_text, font=dict(size=14, color=black_font)),
         height=700,
         showlegend=False,
         xaxis_rangeslider_visible=False,
         margin=dict(l=60, r=60, t=50, b=40),
-        hovermode='x unified'
+        hovermode='x unified',
+        font=dict(color=black_font)  # Global font color
     )
 
-    # Update axes
-    fig.update_yaxes(title_text="Price ($)", row=1, col=1)
-    fig.update_yaxes(title_text="Volume", row=2, col=1, secondary_y=False)
-    fig.update_yaxes(title_text="Price ($)", row=2, col=1, secondary_y=True)
-    fig.update_yaxes(title_text="RSI", range=[0, 100], row=3, col=1)
+    # Update axes - all black fonts
+    fig.update_yaxes(title_text="Price ($)", row=1, col=1,
+                     title_font=dict(color=black_font), tickfont=dict(color=black_font))
+    fig.update_yaxes(title_text="Volume", row=2, col=1, secondary_y=False,
+                     title_font=dict(color=black_font), tickfont=dict(color=black_font))
+    fig.update_yaxes(title_text="Price ($)", row=2, col=1, secondary_y=True,
+                     title_font=dict(color=black_font), tickfont=dict(color=black_font))
+    fig.update_yaxes(title_text="RSI", range=[0, 100], row=3, col=1,
+                     title_font=dict(color=black_font), tickfont=dict(color=black_font))
     fig.update_yaxes(title_text="Velocity", row=4, col=1, secondary_y=False,
-                     title_font=dict(color=VELOCITY_COLOR), range=y_range)
+                     title_font=dict(color=black_font), tickfont=dict(color=black_font), range=y_range)
     fig.update_yaxes(title_text="Accel", row=4, col=1, secondary_y=True,
-                     title_font=dict(color=ACCEL_COLOR))
+                     title_font=dict(color=black_font), tickfont=dict(color=black_font))
 
-    # Update x-axes with proper tick labels
+    # Update x-axes with proper tick labels - black font
     fig.update_xaxes(
         tickmode='array',
         tickvals=list(tick_indices),
         ticktext=tick_labels,
+        tickfont=dict(color=black_font),
         row=4, col=1
     )
 
@@ -508,15 +517,20 @@ def create_heatmap(results):
             opacity=1.0
         ))
 
+    # All black fonts with 100% opacity
+    black_font = 'rgba(0,0,0,1)'
+
     fig.update_layout(
         title=dict(text="<b>All Stocks by Score</b><br><sub>(Color = Daily Gain)</sub>",
-                   font=dict(size=12)),
-        xaxis=dict(title="Score (out of 6)", range=[-0.5, 7.5], dtick=1),
+                   font=dict(size=12, color=black_font)),
+        xaxis=dict(title="Score (out of 6)", range=[-0.5, 7.5], dtick=1,
+                   titlefont=dict(color=black_font), tickfont=dict(color=black_font)),
         yaxis=dict(showticklabels=False, autorange='reversed'),
         height=max(400, len(tickers) * 28),
         margin=dict(l=80, r=80, t=60, b=40),
         annotations=annotations,
-        showlegend=False
+        showlegend=False,
+        font=dict(color=black_font)  # Global font color
     )
 
     return fig
