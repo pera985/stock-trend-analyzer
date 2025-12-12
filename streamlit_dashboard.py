@@ -416,18 +416,21 @@ def create_stock_chart(ticker, data, result, interval):
     fig.update_yaxes(title_text="Accel", row=4, col=1, secondary_y=True,
                      title_font=dict(color=ACCEL_COLOR))
 
-    # Update x-axes with proper tick labels
-    fig.update_xaxes(
-        tickmode='array',
-        tickvals=list(tick_indices),
-        ticktext=tick_labels,
-        row=4, col=1
-    )
+    # Update x-axes with proper tick labels (CT times for intraday)
+    # Apply to all x-axes since they're shared
+    for row in range(1, 5):
+        fig.update_xaxes(
+            tickmode='array',
+            tickvals=list(tick_indices),
+            ticktext=tick_labels,
+            row=row, col=1
+        )
 
-    # Hide x-axis labels for upper panels
+    # Hide x-axis labels for upper panels (only bottom shows labels)
     fig.update_xaxes(showticklabels=False, row=1, col=1)
     fig.update_xaxes(showticklabels=False, row=2, col=1)
     fig.update_xaxes(showticklabels=False, row=3, col=1)
+    fig.update_xaxes(showticklabels=True, row=4, col=1)
 
     return fig
 
@@ -561,7 +564,7 @@ def main():
     # Interval selection
     interval = st.sidebar.selectbox(
         "Interval",
-        ['1d', '5min', '15min', '30min', '60min'],
+        ['5min', '15min', '30min', '60min', '1d'],
         index=0
     )
 
