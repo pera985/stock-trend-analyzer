@@ -397,39 +397,30 @@ def create_stock_chart(ticker, data, result, interval):
         title_text += f" | {gain_1d:+.2f}%"
     title_text += f" | ${current_price:.2f}</b>"
 
-    # Global font settings - all black with 100% opacity
-    black_font = 'rgba(0,0,0,1)'
-
     fig.update_layout(
-        title=dict(text=title_text, font=dict(size=14, color=black_font)),
+        title=dict(text=title_text, font=dict(size=14)),
         height=700,
         showlegend=False,
         xaxis_rangeslider_visible=False,
         margin=dict(l=60, r=60, t=50, b=40),
-        hovermode='x unified',
-        font=dict(color=black_font)  # Global font color
+        hovermode='x unified'
     )
 
-    # Update axes - all black fonts
-    fig.update_yaxes(title_text="Price ($)", row=1, col=1,
-                     title_font=dict(color=black_font), tickfont=dict(color=black_font))
-    fig.update_yaxes(title_text="Volume", row=2, col=1, secondary_y=False,
-                     title_font=dict(color=black_font), tickfont=dict(color=black_font))
-    fig.update_yaxes(title_text="Price ($)", row=2, col=1, secondary_y=True,
-                     title_font=dict(color=black_font), tickfont=dict(color=black_font))
-    fig.update_yaxes(title_text="RSI", range=[0, 100], row=3, col=1,
-                     title_font=dict(color=black_font), tickfont=dict(color=black_font))
+    # Update axes
+    fig.update_yaxes(title_text="Price ($)", row=1, col=1)
+    fig.update_yaxes(title_text="Volume", row=2, col=1, secondary_y=False)
+    fig.update_yaxes(title_text="Price ($)", row=2, col=1, secondary_y=True)
+    fig.update_yaxes(title_text="RSI", range=[0, 100], row=3, col=1)
     fig.update_yaxes(title_text="Velocity", row=4, col=1, secondary_y=False,
-                     title_font=dict(color=black_font), tickfont=dict(color=black_font), range=y_range)
+                     title_font=dict(color=VELOCITY_COLOR), range=y_range)
     fig.update_yaxes(title_text="Accel", row=4, col=1, secondary_y=True,
-                     title_font=dict(color=black_font), tickfont=dict(color=black_font))
+                     title_font=dict(color=ACCEL_COLOR))
 
-    # Update x-axes with proper tick labels - black font
+    # Update x-axes with proper tick labels
     fig.update_xaxes(
         tickmode='array',
         tickvals=list(tick_indices),
         ticktext=tick_labels,
-        tickfont=dict(color=black_font),
         row=4, col=1
     )
 
@@ -517,20 +508,15 @@ def create_heatmap(results):
             opacity=1.0
         ))
 
-    # All black fonts with 100% opacity
-    black_font = 'rgba(0,0,0,1)'
-
     fig.update_layout(
         title=dict(text="<b>All Stocks by Score</b><br><sub>(Color = Daily Gain)</sub>",
-                   font=dict(size=12, color=black_font)),
-        xaxis=dict(title="Score (out of 6)", range=[-0.5, 7.5], dtick=1,
-                   titlefont=dict(color=black_font), tickfont=dict(color=black_font)),
+                   font=dict(size=12)),
+        xaxis=dict(title="Score (out of 6)", range=[-0.5, 7.5], dtick=1),
         yaxis=dict(showticklabels=False, autorange='reversed'),
         height=max(400, len(tickers) * 28),
         margin=dict(l=80, r=80, t=60, b=40),
         annotations=annotations,
-        showlegend=False,
-        font=dict(color=black_font)  # Global font color
+        showlegend=False
     )
 
     return fig
@@ -572,10 +558,10 @@ def main():
         help="Enter ticker symbols separated by commas"
     )
 
-    # Interval selection (default to 5min to match live_dashboard)
+    # Interval selection
     interval = st.sidebar.selectbox(
         "Interval",
-        ['5min', '15min', '30min', '60min', '1d'],
+        ['1d', '5min', '15min', '30min', '60min'],
         index=0
     )
 
@@ -629,29 +615,22 @@ def main():
 
     # Initialize analyzer and analyze stocks
     with st.spinner("Analyzing stocks..."):
-        try:
-            analyzer = StockTrendAnalyzer(
-                api_key=api_key,
-                interval=interval,
-                period='full'
-            )
+        analyzer = StockTrendAnalyzer(
+            api_key=api_key,
+            interval=interval,
+            period='full'
+        )
 
-            results = []
-            progress_bar = st.progress(0)
+        results = []
+        progress_bar = st.progress(0)
 
-            for i, ticker in enumerate(tickers):
-                try:
-                    result = analyzer.is_trending_up(ticker)
-                    if result:
-                        results.append(result)
-                except Exception as e:
-                    st.warning(f"Error analyzing {ticker}: {str(e)}")
-                progress_bar.progress((i + 1) / len(tickers))
+        for i, ticker in enumerate(tickers):
+            result = analyzer.is_trending_up(ticker)
+            if result:
+                results.append(result)
+            progress_bar.progress((i + 1) / len(tickers))
 
-            progress_bar.empty()
-        except Exception as e:
-            st.error(f"Analyzer initialization error: {str(e)}")
-            st.stop()
+        progress_bar.empty()
 
     if not results:
         st.error("No data available for the selected tickers.")
