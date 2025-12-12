@@ -707,8 +707,8 @@ def main():
                         # For intraday, convert to CT
                         if interval != '1d':
                             data.index = data.index - pd.Timedelta(hours=1)
-                            # Filter to extended hours (3 AM to 7 PM CT)
-                            data = data[(data.index.hour >= 3) & (data.index.hour < 19)]
+                            # Filter to market hours starting at 6:30 AM CT until 7 PM CT
+                            data = data[((data.index.hour > 6) | ((data.index.hour == 6) & (data.index.minute >= 30))) & (data.index.hour < 19)]
 
                         # Limit to last 100 bars for display
                         display_data = data.tail(100)
