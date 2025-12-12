@@ -157,11 +157,13 @@ def create_stock_chart(ticker, data, result, interval):
     # Create sequential x-axis positions (eliminates gaps)
     x_positions = list(range(len(data)))
 
-    # Create date labels for hover
+    # Create date labels for tick labels
+    # For intraday: show MM/DD<br>HH:MM (CT time format matching live_dashboard)
+    # For daily: show MM/DD only
     if interval != '1d':
-        date_labels = [d.strftime('%m/%d %H:%M') for d in data.index]
+        date_labels = [d.strftime('%m/%d<br>%H:%M') for d in data.index]
     else:
-        date_labels = [d.strftime('%Y-%m-%d') for d in data.index]
+        date_labels = [d.strftime('%m/%d') for d in data.index]
 
     # Create subplots with 4 rows
     fig = make_subplots(
