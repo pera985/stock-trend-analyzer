@@ -629,22 +629,29 @@ def main():
 
     # Initialize analyzer and analyze stocks
     with st.spinner("Analyzing stocks..."):
-        analyzer = StockTrendAnalyzer(
-            api_key=api_key,
-            interval=interval,
-            period='full'
-        )
+        try:
+            analyzer = StockTrendAnalyzer(
+                api_key=api_key,
+                interval=interval,
+                period='full'
+            )
 
-        results = []
-        progress_bar = st.progress(0)
+            results = []
+            progress_bar = st.progress(0)
 
-        for i, ticker in enumerate(tickers):
-            result = analyzer.is_trending_up(ticker)
-            if result:
-                results.append(result)
-            progress_bar.progress((i + 1) / len(tickers))
+            for i, ticker in enumerate(tickers):
+                try:
+                    result = analyzer.is_trending_up(ticker)
+                    if result:
+                        results.append(result)
+                except Exception as e:
+                    st.warning(f"Error analyzing {ticker}: {str(e)}")
+                progress_bar.progress((i + 1) / len(tickers))
 
-        progress_bar.empty()
+            progress_bar.empty()
+        except Exception as e:
+            st.error(f"Analyzer initialization error: {str(e)}")
+            st.stop()
 
     if not results:
         st.error("No data available for the selected tickers.")
