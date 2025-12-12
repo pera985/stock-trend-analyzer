@@ -1,6 +1,7 @@
 """
 Streamlit Live Dashboard for Stock Trend Analyzer
-Web-based version for sharing via Streamlit Cloud
+Web-based version replicating the matplotlib live_dashboard.py
+Displays heatmap + top 6 stocks with 4-panel technical analysis
 
 Run locally: streamlit run streamlit_dashboard.py
 Deploy: Push to GitHub and connect to Streamlit Cloud
@@ -15,6 +16,7 @@ import pytz
 from datetime import datetime
 import time
 import os
+from scipy.ndimage import gaussian_filter1d
 
 # Import from the main analyzer
 from stock_trend_analyzer import StockTrendAnalyzer, MassiveClient, RateLimiter
@@ -28,54 +30,73 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better styling
-st.markdown("""
-<style>
-    .stMetric {
-        background-color: #f0f2f6;
-        padding: 10px;
-        border-radius: 5px;
-    }
-    .big-font {
-        font-size: 24px !important;
-        font-weight: bold;
-    }
-</style>
-""", unsafe_allow_html=True)
+# Color constants (same as live_dashboard.py)
+RSI_COLOR_OVERSOLD = '#FF4444'    # Red - oversold (< 30)
+RSI_COLOR_BEARISH = '#FFA500'     # Orange - bearish (30-50)
+RSI_COLOR_BULLISH = '#4169E1'     # Royal blue - bullish (50-80)
+RSI_COLOR_OVERBOUGHT = '#FFD700'  # Gold - overbought (> 80)
+
+SMOOTHED_COLOR = 'blue'
+VELOCITY_COLOR = 'blue'
+ACCEL_COLOR = '#C49821'  # Gold/amber
+
+# Quadrant colors for velocity/acceleration shading
+COLOR_VEL_POS_ACC_POS = 'rgba(0, 200, 83, 0.35)'   # Bright green
+COLOR_VEL_POS_ACC_NEG = 'rgba(105, 240, 174, 0.35)'  # Medium green
+COLOR_VEL_NEG_ACC_POS = 'rgba(255, 138, 128, 0.35)'  # Medium red
+COLOR_VEL_NEG_ACC_NEG = 'rgba(213, 0, 0, 0.35)'    # Bright red
 
 
 def get_api_key():
     """Get API key from Streamlit secrets or environment"""
-    # Try Streamlit secrets first (for cloud deployment)
     if hasattr(st, 'secrets') and 'MASSIVE_API_KEY' in st.secrets:
         return st.secrets['MASSIVE_API_KEY']
-    # Fall back to environment variable
     return os.getenv('MASSIVE_API_KEY')
 
 
 def load_tickers_from_file(filename):
     """Load tickers from input file"""
-    input_files_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'input_files')
-    filepath = os.path.join(input_files_dir, filename)
+    # Try multiple possible paths for Streamlit Cloud compatibility
+    possible_paths = [
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), 'input_files', filename),
+        os.path.join('input_files', filename),
+        filename
+    ]
 
-    if not os.path.exists(filepath):
-        return []
-
-    tickers = []
-    with open(filepath, 'r') as f:
-        for line in f:
-            line = line.strip().upper()
-            if line and not line.startswith('#'):
-                tickers.append(line)
-    return tickers
+    for filepath in possible_paths:
+        if os.path.exists(filepath):
+            tickers = []
+            with open(filepath, 'r') as f:
+                for line in f:
+                    line = line.strip().upper()
+                    if line and not line.startswith('#'):
+                        tickers.append(line)
+            return tickers
+    return []
 
 
 def get_available_input_files():
     """Get list of available input files"""
-    input_files_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'input_files')
-    if not os.path.exists(input_files_dir):
-        return []
-    return [f for f in os.listdir(input_files_dir) if f.endswith('.txt')]
+    possible_dirs = [
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), 'input_files'),
+        'input_files'
+    ]
+
+    for input_files_dir in possible_dirs:
+        if os.path.exists(input_files_dir):
+            return [f for f in os.listdir(input_files_dir) if f.endswith('.txt')]
+    return []
+
+
+def calculate_bollinger_bands(data, period=20, num_std=2):
+    """Calculate Bollinger Bands"""
+    sma = data['Close'].rolling(window=period).mean()
+    std = data['Close'].rolling(window=period).std()
+    return {
+        'upper': sma + (std * num_std),
+        'middle': sma,
+        'lower': sma - (std * num_std)
+    }
 
 
 def calculate_rsi(data, period=14):
@@ -87,189 +108,376 @@ def calculate_rsi(data, period=14):
     return 100 - (100 / (1 + rs))
 
 
-def calculate_bollinger_bands(data, period=20, num_std=2):
-    """Calculate Bollinger Bands"""
-    sma = data['Close'].rolling(window=period).mean()
-    std = data['Close'].rolling(window=period).std()
+def calculate_smoothed_velocity_acceleration(data, sigma=3):
+    """Calculate smoothed price, velocity, and acceleration using Gaussian smoothing"""
+    prices = data['Close'].values.astype(float)
+    smoothed = gaussian_filter1d(prices, sigma=sigma)
+    velocity = np.gradient(smoothed)
+    acceleration = np.gradient(velocity)
     return {
-        'middle': sma,
-        'upper': sma + (std * num_std),
-        'lower': sma - (std * num_std)
+        'smoothed': pd.Series(smoothed, index=data.index),
+        'velocity': pd.Series(velocity, index=data.index),
+        'acceleration': pd.Series(acceleration, index=data.index)
     }
 
 
 def get_rsi_color(rsi_value):
     """Get color based on RSI value"""
     if pd.isna(rsi_value):
-        return '#808080'
-    if rsi_value < 30 or rsi_value > 80:
-        return '#FFD700'  # Yellow - extreme
-    elif rsi_value < 50:
-        return '#FF4444'  # Red - bearish
+        return 'gray'
+    elif rsi_value < 30:
+        return RSI_COLOR_OVERSOLD
+    elif 30 <= rsi_value < 50:
+        return RSI_COLOR_BEARISH
+    elif 50 <= rsi_value <= 80:
+        return RSI_COLOR_BULLISH
     else:
-        return '#4169E1'  # Blue - bullish
+        return RSI_COLOR_OVERBOUGHT
 
 
 def create_stock_chart(ticker, data, result, interval):
-    """Create a 4-panel Plotly chart for a single stock"""
-
+    """
+    Create a 4-panel Plotly chart replicating live_dashboard.py layout:
+    Panel 1: Price with candlesticks, Bollinger Bands, and smoothed line
+    Panel 2: Volume with SMA5/SMA20 on secondary axis
+    Panel 3: RSI with color coding
+    Panel 4: Velocity & Acceleration with quadrant shading
+    """
     # Calculate indicators
-    bb = calculate_bollinger_bands(data)
-    rsi = calculate_rsi(data)
+    bb = calculate_bollinger_bands(data, period=20, num_std=2)
+    rsi = calculate_rsi(data, period=14)
     sma_5 = data['Close'].rolling(window=5).mean()
     sma_20 = data['Close'].rolling(window=20).mean()
     volume_ma_50 = data['Volume'].rolling(window=50).mean()
+    derivatives = calculate_smoothed_velocity_acceleration(data, sigma=3)
+    smoothed = derivatives['smoothed']
+    velocity = derivatives['velocity']
+    acceleration = derivatives['acceleration']
 
-    # Create subplots
+    # Create sequential x-axis positions (eliminates gaps)
+    x_positions = list(range(len(data)))
+
+    # Create date labels for hover
+    if interval != '1d':
+        date_labels = [d.strftime('%m/%d %H:%M') for d in data.index]
+    else:
+        date_labels = [d.strftime('%Y-%m-%d') for d in data.index]
+
+    # Create subplots with 4 rows
     fig = make_subplots(
         rows=4, cols=1,
         shared_xaxes=True,
         vertical_spacing=0.03,
         row_heights=[0.4, 0.2, 0.2, 0.2],
-        subplot_titles=('Price & Bollinger Bands', 'Volume', 'RSI', 'Momentum')
+        specs=[[{"secondary_y": False}],
+               [{"secondary_y": True}],
+               [{"secondary_y": False}],
+               [{"secondary_y": True}]]
     )
 
-    # Panel 1: Candlestick with Bollinger Bands
+    # ============================================
+    # PANEL 1: PRICE WITH BOLLINGER BANDS
+    # ============================================
+
+    # Candlesticks
     fig.add_trace(
         go.Candlestick(
-            x=data.index,
+            x=x_positions,
             open=data['Open'],
             high=data['High'],
             low=data['Low'],
             close=data['Close'],
             name='Price',
-            increasing_line_color='green',
-            decreasing_line_color='red'
+            increasing_line_color='#56B05C',
+            decreasing_line_color='#F77272',
+            increasing_fillcolor='#56B05C',
+            decreasing_fillcolor='#F77272'
         ),
         row=1, col=1
     )
 
     # Bollinger Bands
     fig.add_trace(
-        go.Scatter(x=data.index, y=bb['upper'], mode='lines',
-                   name='BB Upper', line=dict(color='rgba(128,128,128,0.5)', width=1)),
+        go.Scatter(x=x_positions, y=bb['upper'], mode='lines',
+                   name='BB Upper', line=dict(color='green', width=1, dash='dash'),
+                   opacity=0.7),
         row=1, col=1
     )
     fig.add_trace(
-        go.Scatter(x=data.index, y=bb['middle'], mode='lines',
-                   name='BB Middle', line=dict(color='orange', width=1)),
+        go.Scatter(x=x_positions, y=bb['middle'], mode='lines',
+                   name='BB Middle', line=dict(color='blue', width=1)),
         row=1, col=1
     )
     fig.add_trace(
-        go.Scatter(x=data.index, y=bb['lower'], mode='lines',
-                   name='BB Lower', line=dict(color='rgba(128,128,128,0.5)', width=1),
-                   fill='tonexty', fillcolor='rgba(128,128,128,0.1)'),
+        go.Scatter(x=x_positions, y=bb['lower'], mode='lines',
+                   name='BB Lower', line=dict(color='red', width=1, dash='dash'),
+                   fill='tonexty', fillcolor='rgba(128,128,128,0.1)',
+                   opacity=0.7),
         row=1, col=1
     )
 
-    # Panel 2: Volume
+    # Smoothed price line
+    fig.add_trace(
+        go.Scatter(x=x_positions, y=smoothed.values, mode='lines',
+                   name='Smoothed', line=dict(color=SMOOTHED_COLOR, width=1.5),
+                   opacity=0.8),
+        row=1, col=1
+    )
+
+    # ============================================
+    # PANEL 2: VOLUME WITH SMA5/SMA20
+    # ============================================
+
+    # Volume bars
     colors = ['green' if data['Close'].iloc[i] >= data['Open'].iloc[i] else 'red'
               for i in range(len(data))]
     fig.add_trace(
-        go.Bar(x=data.index, y=data['Volume'], name='Volume', marker_color=colors, opacity=0.7),
-        row=2, col=1
+        go.Bar(x=x_positions, y=data['Volume'], name='Volume',
+               marker_color=colors, opacity=0.65),
+        row=2, col=1, secondary_y=False
     )
+
+    # Volume MA50
     fig.add_trace(
-        go.Scatter(x=data.index, y=volume_ma_50, mode='lines',
+        go.Scatter(x=x_positions, y=volume_ma_50, mode='lines',
                    name='Vol MA50', line=dict(color='purple', width=1)),
-        row=2, col=1
+        row=2, col=1, secondary_y=False
     )
 
-    # SMA on volume panel (secondary y-axis would be complex, skip for simplicity)
-
-    # Panel 3: RSI
+    # SMA5 and SMA20 on secondary y-axis
     fig.add_trace(
-        go.Scatter(x=data.index, y=rsi, mode='lines', name='RSI',
-                   line=dict(color='blue', width=1.5)),
-        row=3, col=1
-    )
-    # RSI levels
-    fig.add_hline(y=70, line_dash="dash", line_color="red", row=3, col=1)
-    fig.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1)
-    fig.add_hline(y=50, line_dash="dot", line_color="gray", row=3, col=1)
-
-    # Panel 4: Price SMAs
-    fig.add_trace(
-        go.Scatter(x=data.index, y=sma_5, mode='lines',
+        go.Scatter(x=x_positions, y=sma_5, mode='lines',
                    name='SMA5', line=dict(color='orange', width=1)),
-        row=4, col=1
+        row=2, col=1, secondary_y=True
     )
     fig.add_trace(
-        go.Scatter(x=data.index, y=sma_20, mode='lines',
+        go.Scatter(x=x_positions, y=sma_20, mode='lines',
                    name='SMA20', line=dict(color='blue', width=1)),
-        row=4, col=1
+        row=2, col=1, secondary_y=True
     )
 
-    # Get current price and score
+    # ============================================
+    # PANEL 3: RSI WITH COLOR CODING
+    # ============================================
+
+    # Create RSI segments with different colors
+    for i in range(len(rsi) - 1):
+        if pd.isna(rsi.iloc[i]) or pd.isna(rsi.iloc[i + 1]):
+            continue
+        color = get_rsi_color(rsi.iloc[i])
+        fig.add_trace(
+            go.Scatter(
+                x=[x_positions[i], x_positions[i + 1]],
+                y=[rsi.iloc[i], rsi.iloc[i + 1]],
+                mode='lines',
+                line=dict(color=color, width=1.5),
+                showlegend=False,
+                hoverinfo='skip'
+            ),
+            row=3, col=1
+        )
+
+    # RSI horizontal lines
+    fig.add_hline(y=70, line_dash="dash", line_color="red", line_width=1, row=3, col=1)
+    fig.add_hline(y=30, line_dash="dash", line_color="green", line_width=1, row=3, col=1)
+    fig.add_hline(y=50, line_dash="solid", line_color="magenta", line_width=1, row=3, col=1)
+
+    # RSI shaded regions
+    fig.add_hrect(y0=70, y1=100, fillcolor="red", opacity=0.1, line_width=0, row=3, col=1)
+    fig.add_hrect(y0=0, y1=30, fillcolor="green", opacity=0.1, line_width=0, row=3, col=1)
+
+    # ============================================
+    # PANEL 4: VELOCITY & ACCELERATION
+    # ============================================
+
+    # Add quadrant shading based on velocity/acceleration signs
+    vel_values = velocity.values
+    acc_values = acceleration.values
+
+    for i in range(len(vel_values)):
+        vel_pos = vel_values[i] > 0
+        acc_pos = acc_values[i] > 0
+
+        if vel_pos and acc_pos:
+            color = COLOR_VEL_POS_ACC_POS
+        elif vel_pos and not acc_pos:
+            color = COLOR_VEL_POS_ACC_NEG
+        elif not vel_pos and acc_pos:
+            color = COLOR_VEL_NEG_ACC_POS
+        else:
+            color = COLOR_VEL_NEG_ACC_NEG
+
+        if i < len(x_positions):
+            fig.add_vrect(
+                x0=x_positions[i] - 0.5, x1=x_positions[i] + 0.5,
+                fillcolor=color, layer="below", line_width=0,
+                row=4, col=1
+            )
+
+    # Velocity line (primary y-axis)
+    fig.add_trace(
+        go.Scatter(x=x_positions, y=velocity.values, mode='lines',
+                   name='Velocity', line=dict(color=VELOCITY_COLOR, width=1.5)),
+        row=4, col=1, secondary_y=False
+    )
+
+    # Acceleration line (secondary y-axis)
+    fig.add_trace(
+        go.Scatter(x=x_positions, y=acceleration.values, mode='lines',
+                   name='Acceleration', line=dict(color=ACCEL_COLOR, width=1.5)),
+        row=4, col=1, secondary_y=True
+    )
+
+    # Zero lines for velocity and acceleration
+    fig.add_hline(y=0, line_color=VELOCITY_COLOR, line_width=1, row=4, col=1)
+
+    # ============================================
+    # LAYOUT AND FORMATTING
+    # ============================================
+
+    # Get result data
     current_price = result.get('current_price', data['Close'].iloc[-1]) if result else data['Close'].iloc[-1]
     score = result.get('score', 0) if result else 0
     momentum = result.get('momentum', {}) if result else {}
     gain_1d = momentum.get('1d', 0)
 
-    # Update layout
+    # Create tick labels (show every Nth label)
+    num_ticks = min(8, len(data))
+    tick_indices = np.linspace(0, len(data) - 1, num_ticks, dtype=int)
+    tick_labels = [date_labels[i] for i in tick_indices]
+
+    # Title with score, ticker, and daily gain
+    title_text = f"<b>{score:.1f} | {ticker}"
+    if interval != '1d':
+        title_text += f" ({interval})"
+    if gain_1d != 'N/A' and gain_1d is not None:
+        title_text += f" | {gain_1d:+.2f}%"
+    title_text += f" | ${current_price:.2f}</b>"
+
     fig.update_layout(
-        title=f"{ticker} | Score: {score:.1f} | {gain_1d:+.2f}% | ${current_price:.2f}",
-        height=600,
+        title=dict(text=title_text, font=dict(size=14)),
+        height=700,
         showlegend=False,
         xaxis_rangeslider_visible=False,
-        margin=dict(l=50, r=50, t=50, b=30)
+        margin=dict(l=60, r=60, t=50, b=40),
+        hovermode='x unified'
     )
 
-    # Update y-axes labels
+    # Update axes
     fig.update_yaxes(title_text="Price ($)", row=1, col=1)
-    fig.update_yaxes(title_text="Volume", row=2, col=1)
-    fig.update_yaxes(title_text="RSI", row=3, col=1)
-    fig.update_yaxes(title_text="SMA", row=4, col=1)
+    fig.update_yaxes(title_text="Volume", row=2, col=1, secondary_y=False)
+    fig.update_yaxes(title_text="Price ($)", row=2, col=1, secondary_y=True)
+    fig.update_yaxes(title_text="RSI", range=[0, 100], row=3, col=1)
+    fig.update_yaxes(title_text="Velocity", row=4, col=1, secondary_y=False,
+                     title_font=dict(color=VELOCITY_COLOR))
+    fig.update_yaxes(title_text="Accel", row=4, col=1, secondary_y=True,
+                     title_font=dict(color=ACCEL_COLOR))
+
+    # Update x-axes with proper tick labels
+    fig.update_xaxes(
+        tickmode='array',
+        tickvals=list(tick_indices),
+        ticktext=tick_labels,
+        row=4, col=1
+    )
+
+    # Hide x-axis labels for upper panels
+    fig.update_xaxes(showticklabels=False, row=1, col=1)
+    fig.update_xaxes(showticklabels=False, row=2, col=1)
+    fig.update_xaxes(showticklabels=False, row=3, col=1)
 
     return fig
 
 
 def create_heatmap(results):
-    """Create a heatmap showing all stocks by score and daily gain"""
+    """Create a heatmap showing all stocks by score and daily gain (replicating live_dashboard)"""
     if not results:
         return None
 
-    # Sort by score
+    # Sort by score (descending)
     sorted_results = sorted(results, key=lambda x: x.get('score', 0), reverse=True)
 
     tickers = [r['ticker'] for r in sorted_results]
     scores = [r.get('score', 0) for r in sorted_results]
-    gains = [r.get('momentum', {}).get('1d', 0) for r in sorted_results]
+
+    # Get daily gains
+    daily_gains = []
+    for r in sorted_results:
+        momentum = r.get('momentum', {})
+        gain = momentum.get('1d', 0)
+        if isinstance(gain, str) or gain is None:
+            gain = 0
+        daily_gains.append(gain)
+
+    # Create colors based on daily gain
+    max_abs_gain = max(abs(min(daily_gains)) if daily_gains else 1,
+                       abs(max(daily_gains)) if daily_gains else 1, 0.1)
+
+    colors = []
+    for gain in daily_gains:
+        if gain >= 0:
+            intensity = min(gain / max_abs_gain, 1.0)
+            colors.append(f'rgb({int(51)}, {int(153 + 102 * intensity)}, {int(51)})')
+        else:
+            intensity = min(abs(gain) / max_abs_gain, 1.0)
+            colors.append(f'rgb({int(204 + 51 * intensity)}, {int(51)}, {int(51)})')
 
     # Create figure
     fig = go.Figure()
 
-    # Add horizontal bars for scores
-    colors = ['green' if g >= 0 else 'red' for g in gains]
-
+    # Add horizontal bars
     fig.add_trace(go.Bar(
-        y=tickers,
+        y=list(range(len(tickers))),
         x=scores,
         orientation='h',
         marker_color=colors,
-        marker_opacity=[0.3 + min(abs(g) / 10, 0.7) for g in gains],
-        text=[f"{s:.1f} | {g:+.1f}%" for s, g in zip(scores, gains)],
+        text=[f"{s:.1f}" for s in scores],
         textposition='inside',
-        textfont=dict(color='white', size=10)
+        textfont=dict(color='white', size=10),
+        hovertemplate='%{customdata[0]}<br>Score: %{x:.1f}<br>Gain: %{customdata[1]:+.1f}%<extra></extra>',
+        customdata=list(zip(tickers, daily_gains))
     ))
 
-    fig.update_layout(
-        title="Stock Rankings (Score | Daily Gain %)",
-        xaxis_title="Score",
-        yaxis_title="",
-        height=max(300, len(tickers) * 25),
-        margin=dict(l=80, r=20, t=40, b=40),
-        xaxis=dict(range=[0, 6.5])
-    )
+    # Add threshold line at 4.0
+    fig.add_vline(x=4.0, line_dash="dash", line_color="orange", line_width=2)
 
-    # Reverse y-axis so highest score is at top
-    fig.update_yaxes(autorange="reversed")
+    # Add ticker labels and gain annotations
+    annotations = []
+    for i, (ticker, gain) in enumerate(zip(tickers, daily_gains)):
+        # Ticker label on left
+        annotations.append(dict(
+            x=-0.3, y=i,
+            text=f"<b>{ticker}</b>",
+            showarrow=False,
+            font=dict(size=10),
+            xanchor='right'
+        ))
+        # Gain label on right
+        gain_color = 'green' if gain >= 0 else 'red'
+        annotations.append(dict(
+            x=6.3, y=i,
+            text=f"<b>{gain:+.1f}%</b>",
+            showarrow=False,
+            font=dict(size=9, color=gain_color),
+            xanchor='left'
+        ))
+
+    fig.update_layout(
+        title=dict(text="<b>All Stocks by Score</b><br><sub>(Color = Daily Gain)</sub>",
+                   font=dict(size=12)),
+        xaxis=dict(title="Score (out of 6)", range=[-0.5, 7], dtick=1),
+        yaxis=dict(showticklabels=False, autorange='reversed'),
+        height=max(400, len(tickers) * 28),
+        margin=dict(l=80, r=70, t=60, b=40),
+        annotations=annotations,
+        showlegend=False
+    )
 
     return fig
 
 
 def main():
-    """Main Streamlit app"""
+    """Main Streamlit app - replicating live_dashboard.py"""
 
     # Sidebar
     st.sidebar.title("📈 Stock Trend Analyzer")
@@ -296,10 +504,12 @@ def main():
         selected_file = None
         st.sidebar.warning("No input files found in input_files/")
 
-    # Or manual ticker input
+    # Manual ticker input with default value
+    default_tickers = "AAPL,MSFT,GOOGL,NVDA,TSLA,AMZN"
     manual_tickers = st.sidebar.text_input(
         "Or enter tickers (comma-separated)",
-        placeholder="AAPL,MSFT,GOOGL"
+        value=default_tickers,
+        help="Enter ticker symbols separated by commas"
     )
 
     # Interval selection
@@ -319,11 +529,11 @@ def main():
         disabled=not auto_refresh
     )
 
-    # Number of charts to show
+    # Number of charts to show (max 6 for grid layout)
     num_charts = st.sidebar.slider(
         "Number of detailed charts",
         min_value=1,
-        max_value=12,
+        max_value=6,
         value=6
     )
 
@@ -339,8 +549,8 @@ def main():
     current_time = datetime.now(ct_tz).strftime('%Y-%m-%d %H:%M:%S CT')
     st.sidebar.markdown(f"**Last update:** {current_time}")
 
-    # Load tickers
-    if manual_tickers:
+    # Load tickers - prefer manual input, fall back to file
+    if manual_tickers and manual_tickers.strip():
         tickers = [t.strip().upper() for t in manual_tickers.split(',') if t.strip()]
     elif selected_file:
         tickers = load_tickers_from_file(selected_file)
@@ -348,16 +558,16 @@ def main():
         tickers = []
 
     if not tickers:
-        st.warning("No tickers to analyze. Select an input file or enter tickers manually.")
+        st.warning("No tickers to analyze. Enter tickers in the sidebar.")
         st.stop()
 
     st.sidebar.markdown(f"**Analyzing:** {len(tickers)} tickers")
 
     # Main content
     st.title("📊 Live Stock Dashboard")
-    st.markdown(f"*Updated: {current_time}*")
+    st.markdown(f"*Updated: {current_time}* | *Replicating live_dashboard.py layout*")
 
-    # Initialize analyzer
+    # Initialize analyzer and analyze stocks
     with st.spinner("Analyzing stocks..."):
         analyzer = StockTrendAnalyzer(
             api_key=api_key,
@@ -365,7 +575,6 @@ def main():
             period='full'
         )
 
-        # Analyze all tickers
         results = []
         progress_bar = st.progress(0)
 
@@ -384,12 +593,12 @@ def main():
     # Sort by score
     results.sort(key=lambda x: x.get('score', 0), reverse=True)
 
-    # Summary metrics
+    # Summary metrics (same as live_dashboard)
     col1, col2, col3, col4 = st.columns(4)
 
     trending_count = sum(1 for r in results if r.get('score', 0) >= 4.0)
     avg_score = sum(r.get('score', 0) for r in results) / len(results)
-    avg_gain = sum(r.get('momentum', {}).get('1d', 0) for r in results) / len(results)
+    avg_gain = sum(r.get('momentum', {}).get('1d', 0) or 0 for r in results) / len(results)
     top_ticker = results[0]['ticker'] if results else "N/A"
 
     with col1:
@@ -398,64 +607,68 @@ def main():
     with col2:
         st.metric("Avg Score", f"{avg_score:.2f}")
     with col3:
-        st.metric("Avg Daily Gain", f"{avg_gain:+.2f}%",
-                  delta_color="normal" if avg_gain >= 0 else "inverse")
+        delta_color = "normal" if avg_gain >= 0 else "inverse"
+        st.metric("Avg Daily Gain", f"{avg_gain:+.2f}%")
     with col4:
-        st.metric("Top Stock", top_ticker,
-                  f"{results[0].get('score', 0):.1f}" if results else "")
+        top_score = results[0].get('score', 0) if results else 0
+        st.metric("Top Stock", top_ticker, f"Score: {top_score:.1f}")
 
     st.markdown("---")
 
-    # Two-column layout: Heatmap and Top Charts
-    col_heatmap, col_charts = st.columns([1, 2])
+    # Two-column layout: Heatmap on left, Charts on right
+    col_heatmap, col_charts = st.columns([1, 3])
 
     with col_heatmap:
-        st.subheader("📊 All Stocks Ranking")
+        st.subheader("📊 Stock Rankings")
         heatmap = create_heatmap(results)
         if heatmap:
             st.plotly_chart(heatmap, use_container_width=True)
 
     with col_charts:
-        st.subheader(f"📈 Top {num_charts} Stocks")
+        st.subheader(f"📈 Top {num_charts} Stocks (4-Panel Technical Analysis)")
 
         # Get top N results
         top_results = results[:num_charts]
 
-        # Create tabs for each stock
-        if top_results:
-            tabs = st.tabs([f"{r['ticker']} ({r.get('score', 0):.1f})" for r in top_results])
+        # Create client for fetching data
+        client = MassiveClient(api_key, RateLimiter())
 
-            for tab, result in zip(tabs, top_results):
-                with tab:
-                    ticker = result['ticker']
+        # Display charts in a 2x3 grid (or fewer if num_charts < 6)
+        rows = (num_charts + 2) // 3  # Calculate number of rows needed
 
+        for row_idx in range(rows):
+            cols = st.columns(min(3, num_charts - row_idx * 3))
+
+            for col_idx, col in enumerate(cols):
+                chart_idx = row_idx * 3 + col_idx
+                if chart_idx >= len(top_results):
+                    break
+
+                result = top_results[chart_idx]
+                ticker = result['ticker']
+
+                with col:
                     # Fetch data for chart
-                    client = MassiveClient(api_key, RateLimiter())
-
                     if interval == '1d':
                         data = client.get_daily_data(ticker, 'compact')
                     else:
                         data = client.get_intraday_data(ticker, interval, 'compact')
 
                     if data is not None and not data.empty:
+                        # For intraday, convert to CT
+                        if interval != '1d':
+                            data.index = data.index - pd.Timedelta(hours=1)
+                            # Filter to extended hours (3 AM to 7 PM CT)
+                            data = data[(data.index.hour >= 3) & (data.index.hour < 19)]
+
                         # Limit to last 100 bars for display
                         display_data = data.tail(100)
-                        fig = create_stock_chart(ticker, display_data, result, interval)
-                        st.plotly_chart(fig, use_container_width=True)
 
-                        # Stock details
-                        with st.expander("📋 Details"):
-                            dcol1, dcol2, dcol3 = st.columns(3)
-                            with dcol1:
-                                st.write(f"**Score:** {result.get('score', 0):.2f}")
-                                st.write(f"**Current Price:** ${result.get('current_price', 0):.2f}")
-                            with dcol2:
-                                momentum = result.get('momentum', {})
-                                st.write(f"**1D Gain:** {momentum.get('1d', 0):+.2f}%")
-                                st.write(f"**5D Gain:** {momentum.get('5d', 0):+.2f}%")
-                            with dcol3:
-                                st.write(f"**RSI:** {result.get('current_rsi', 0):.1f}")
-                                st.write(f"**ADX:** {result.get('current_adx', 0):.1f}")
+                        if not display_data.empty:
+                            fig = create_stock_chart(ticker, display_data, result, interval)
+                            st.plotly_chart(fig, use_container_width=True)
+                        else:
+                            st.warning(f"No data for {ticker}")
                     else:
                         st.warning(f"No data available for {ticker}")
 
@@ -471,8 +684,8 @@ def main():
             'Ticker': r['ticker'],
             'Score': f"{r.get('score', 0):.2f}",
             'Price': f"${r.get('current_price', 0):.2f}",
-            '1D %': f"{momentum.get('1d', 0):+.2f}%",
-            '5D %': f"{momentum.get('5d', 0):+.2f}%",
+            '1D %': f"{momentum.get('1d', 0) or 0:+.2f}%",
+            '5D %': f"{momentum.get('5d', 0) or 0:+.2f}%",
             'RSI': f"{r.get('current_rsi', 0):.1f}",
             'ADX': f"{r.get('current_adx', 0):.1f}",
             'Trending': '✅' if r.get('score', 0) >= 4.0 else '❌'
