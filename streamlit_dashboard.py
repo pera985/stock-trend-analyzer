@@ -558,10 +558,10 @@ def main():
         help="Enter ticker symbols separated by commas"
     )
 
-    # Interval selection
+    # Interval selection (default to 5min to match live_dashboard)
     interval = st.sidebar.selectbox(
         "Interval",
-        ['1d', '5min', '15min', '30min', '60min'],
+        ['5min', '15min', '30min', '60min', '1d'],
         index=0
     )
 
