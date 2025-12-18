@@ -11,7 +11,7 @@ import numpy as np
 from datetime import datetime, timedelta
 import warnings
 import time
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 import argparse
 import requests
 import os
@@ -562,30 +562,129 @@ class StockTrendAnalyzer:
         high = data['High']
         low = data['Low']
         close = data['Close']
-        
+
         # Calculate +DM and -DM
         plus_dm = high.diff()
         minus_dm = low.diff().abs()
-        
+
         plus_dm[plus_dm < 0] = 0
         minus_dm[minus_dm < 0] = 0
-        
+
         # Calculate True Range
         tr1 = high - low
         tr2 = abs(high - close.shift())
         tr3 = abs(low - close.shift())
         tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        
+
         # Calculate smoothed +DI and -DI
         atr = tr.rolling(window=period).mean()
         plus_di = 100 * (plus_dm.rolling(window=period).mean() / atr)
         minus_di = 100 * (minus_dm.rolling(window=period).mean() / atr)
-        
+
         # Calculate DX and ADX
         dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
         adx = dx.rolling(window=period).mean()
-        
+
         return adx
+
+    def calculate_choppiness_index(self, data: pd.DataFrame, lookback: int = 14) -> Tuple[float, int]:
+        """
+        Calculate Choppiness Index to measure trend quality ONLY during the uptrend period.
+
+        The Choppiness Index is calculated only on days when the stock is in an uptrend
+        (price above MA20). This ensures we're measuring the smoothness of the uptrend,
+        not including sideways or downtrend periods.
+
+        The Choppiness Index indicates whether a market is choppy (consolidating)
+        or trending (directional movement).
+
+        Formula: CI = 100 * log10(ATR_sum / (High_max - Low_min)) / log10(lookback)
+
+        Range: Typically 38-62
+        - Lower values (< 38.2): Strong trend, smooth price movement
+        - Mid values (38.2-61.8): Mixed/transitional market
+        - Higher values (> 61.8): Choppy, consolidating market
+
+        For scoring purposes:
+        - CI < 50: Trending (favorable for position trading)
+        - CI >= 50: Choppy (less favorable)
+
+        Args:
+            data: DataFrame with OHLC data
+            lookback: Number of periods for calculation (default: 14)
+
+        Returns:
+            Tuple of (Choppiness Index value, uptrend_days used for calculation)
+        """
+        import math
+
+        min_periods = 5  # Minimum uptrend days required for meaningful CI calculation
+
+        if len(data) < 20:
+            logger.debug(f"Insufficient data for Choppiness Index calculation (need at least 20 days for MA20)")
+            return 50.0, 0  # Return neutral value if insufficient data
+
+        # Calculate MA20 to determine uptrend
+        data_copy = data.copy()
+        data_copy['MA20'] = data_copy['Close'].rolling(window=20).mean()
+
+        # Find consecutive days in uptrend (close > MA20) from the most recent day going backwards
+        uptrend_days = 0
+        for i in range(len(data_copy) - 1, 19, -1):  # Start from last row, need at least 20 rows for MA20
+            if pd.notna(data_copy['MA20'].iloc[i]) and data_copy['Close'].iloc[i] > data_copy['MA20'].iloc[i]:
+                uptrend_days += 1
+            else:
+                break  # Stop counting when we hit a non-uptrend day
+
+        logger.debug(f"Found {uptrend_days} consecutive uptrend days (close > MA20)")
+
+        # If not currently in uptrend or uptrend too short, return neutral
+        if uptrend_days < min_periods:
+            logger.debug(f"Uptrend period too short ({uptrend_days} days < {min_periods} minimum)")
+            return 50.0, uptrend_days
+
+        # Use uptrend period for CI calculation (capped at lookback period)
+        effective_lookback = min(uptrend_days, lookback)
+
+        # Get the uptrend period data (+1 for previous close in TR calculation)
+        uptrend_data = data.tail(uptrend_days + 1)
+
+        # For CI calculation, use only the effective_lookback period
+        recent_data = uptrend_data.tail(effective_lookback + 1)
+
+        highs = recent_data['High'].values
+        lows = recent_data['Low'].values
+        closes = recent_data['Close'].values
+
+        # Calculate True Range sum over the lookback period
+        atr_sum = 0.0
+        for i in range(1, len(highs)):
+            # True Range = max(High-Low, |High-PrevClose|, |Low-PrevClose|)
+            tr = max(
+                highs[i] - lows[i],
+                abs(highs[i] - closes[i-1]),
+                abs(lows[i] - closes[i-1])
+            )
+            atr_sum += tr
+
+        # Calculate the high-low range over the lookback period
+        high_low_range = max(highs[1:]) - min(lows[1:])
+
+        # Prevent division by zero
+        if high_low_range <= 0 or atr_sum <= 0:
+            logger.debug("Invalid range for Choppiness Index calculation")
+            return 50.0, uptrend_days  # Return neutral value
+
+        # Calculate Choppiness Index
+        # CI = 100 * log10(ATR_sum / high_low_range) / log10(effective_lookback)
+        choppiness_index = 100 * math.log10(atr_sum / high_low_range) / math.log10(effective_lookback)
+
+        # Clamp to reasonable range (typically 0-100, but usually 20-80 in practice)
+        choppiness_index = max(0, min(100, choppiness_index))
+
+        logger.debug(f"Choppiness Index: {choppiness_index:.2f} (ATR_sum={atr_sum:.2f}, range={high_low_range:.2f}, uptrend_days={uptrend_days}, effective_lookback={effective_lookback})")
+
+        return choppiness_index, uptrend_days
     
     def calculate_momentum(self, data: pd.DataFrame, periods: List[int] = [1, 5, 10, 30], latest_price: float = None) -> Dict:
         """Calculate price momentum over multiple periods
@@ -722,10 +821,16 @@ class StockTrendAnalyzer:
             
             rsi_favorable = 50 <= current_rsi <= 70
             adx_strong = current_adx > 25
-            
+
+            # Calculate Choppiness Index (trend quality indicator - only during uptrend)
+            logger.debug(f"{ticker}: Calculating Choppiness Index (uptrend-only)")
+            choppiness, uptrend_days = self.calculate_choppiness_index(data)
+            choppiness_favorable = choppiness < 50  # Lower = smoother trend
+
             logger.debug(f"{ticker}: Indicators - RSI: {current_rsi:.2f} (Favorable: {rsi_favorable}), "
-                        f"MACD Bullish: {macd_bullish}, ADX: {current_adx:.2f} (Strong: {adx_strong})")
-            
+                        f"MACD Bullish: {macd_bullish}, ADX: {current_adx:.2f} (Strong: {adx_strong}), "
+                        f"Choppiness: {choppiness:.2f} (Favorable: {choppiness_favorable}, Uptrend Days: {uptrend_days})")
+
             # 4. VOLUME ANALYSIS
             logger.debug(f"{ticker}: Analyzing volume trends")
             volume_data = self.analyze_volume(data)
@@ -736,7 +841,7 @@ class StockTrendAnalyzer:
             # OVERALL SCORING
             logger.debug(f"{ticker}: Calculating final score")
             score = 0
-            max_score = 6
+            max_score = 6.5
 
             # Calculate individual score components
             ma_bullish_score = 1.5 if ma_bullish else 0
@@ -745,6 +850,7 @@ class StockTrendAnalyzer:
             macd_score = 1.0 if macd_bullish else 0
             adx_score = 0.5 if adx_strong else 0
             volume_score = 0.5 if volume_increasing else 0
+            choppiness_score = 0.5 if choppiness_favorable else 0
 
             if ma_bullish:
                 score += 1.5
@@ -764,8 +870,11 @@ class StockTrendAnalyzer:
             if volume_increasing:
                 score += 0.5
                 logger.debug(f"{ticker}: +0.5 points for increasing volume")
+            if choppiness_favorable:
+                score += 0.5
+                logger.debug(f"{ticker}: +0.5 points for favorable choppiness (smooth trend)")
 
-            # Consider it trending up if score is >= 4 out of 6
+            # Consider it trending up if score is >= 4 out of 6.5
             is_trending = score >= 4.0
 
             logger.info(f"{ticker}: Analysis complete - Score: {score:.1f}/{max_score}, "
@@ -787,6 +896,9 @@ class StockTrendAnalyzer:
                 'macd_bullish': macd_bullish,
                 'adx': round(current_adx, 2),
                 'adx_strong': adx_strong,
+                'choppiness': round(choppiness, 2),
+                'choppiness_favorable': choppiness_favorable,
+                'uptrend_days': uptrend_days,
                 'volume_trend': volume_data['volume_trend'],
                 'volume_change': round(volume_data['volume_change'], 2) if volume_data['volume_change'] else 'N/A',
                 'volume_increasing': volume_increasing,
@@ -796,6 +908,7 @@ class StockTrendAnalyzer:
                 'rsi_score': rsi_score,
                 'macd_score': macd_score,
                 'adx_score': adx_score,
+                'choppiness_score': choppiness_score,
                 'volume_score': volume_score
             }
             
@@ -916,24 +1029,51 @@ class StockTrendAnalyzer:
             logger.warning("No results to save (empty DataFrame)")
             print("No results to save.")
             return
-        
+
         try:
             logger.info(f"Saving {len(df)} results to {filename}")
-            
+
             # Flatten momentum dictionary for CSV
             df_save = df.copy()
             momentum_df = pd.json_normalize(df_save['momentum'])
             df_save = df_save.drop('momentum', axis=1)
             df_save = pd.concat([df_save, momentum_df], axis=1)
-            
+
+            # Reorder columns for consistent output
+            df_save = self._reorder_csv_columns(df_save)
+
             df_save.to_csv(filename, index=False)
             logger.info(f"Results successfully saved to {filename}")
             print(f"\nResults saved to {filename}")
-            
+
         except Exception as e:
             logger.error(f"Error saving results to {filename}: {e}", exc_info=True)
             print(f"\nError saving results: {e}")
     
+    def _reorder_csv_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Reorder DataFrame columns for consistent CSV output"""
+        cols = df.columns.tolist()
+
+        # Define desired column order matching user specification
+        ordered_cols = [
+            'ticker', 'is_trending', 'score', 'max_score', 'current_price',
+            'sma_50', 'sma_200', 'ma_bullish', 'ma_bullish_score',
+            'volume_trend', 'volume_change', 'volume_increasing', 'volume_score',
+            'momentum_positive', 'momentum_score',
+            'rsi', 'rsi_favorable', 'rsi_score',
+            'macd_bullish', 'macd_score',
+            'adx', 'adx_strong', 'adx_score',
+            'choppiness', 'choppiness_favorable', 'uptrend_days', 'choppiness_score',
+            '1d', '5d', '10d', '30d'
+        ]
+
+        # Build final column list: ordered columns first, then any remaining columns
+        final_cols = [col for col in ordered_cols if col in cols]
+        remaining_cols = [col for col in cols if col not in ordered_cols]
+        final_cols.extend(remaining_cols)
+
+        return df[final_cols]
+
     def save_all_results(self, df: pd.DataFrame, filename: str = 'all_stocks_analyzed.csv'):
         """Save all analyzed stocks (trending and non-trending) to CSV file with detailed scoring breakdown"""
         if df.empty:
@@ -950,21 +1090,8 @@ class StockTrendAnalyzer:
             df_save = df_save.drop('momentum', axis=1)
             df_save = pd.concat([df_save, momentum_df], axis=1)
 
-            # Reorder columns to put scoring breakdown near the score
-            # Get all columns
-            cols = df_save.columns.tolist()
-
-            # Define desired column order: basic info, total score, score breakdown, then technical indicators
-            priority_cols = ['ticker', 'score', 'ma_bullish_score', 'momentum_score', 'rsi_score',
-                           'macd_score', 'adx_score', 'volume_score', 'is_trending', 'max_score',
-                           'current_price']
-
-            # Build final column list: priority columns first, then remaining columns
-            ordered_cols = [col for col in priority_cols if col in cols]
-            remaining_cols = [col for col in cols if col not in priority_cols]
-            final_cols = ordered_cols + remaining_cols
-
-            df_save = df_save[final_cols]
+            # Reorder columns for consistent output
+            df_save = self._reorder_csv_columns(df_save)
 
             df_save.to_csv(filename, index=False)
             logger.info(f"All results with detailed breakdown successfully saved to {filename}")
@@ -1116,8 +1243,8 @@ Note:
     parser.add_argument('--aggregate', type=int, default=30,
                         choices=[15, 30],
                         help='Aggregation window in seconds for 1sec interval (default: 30)')
-    parser.add_argument('--rate-limit', type=int, default=150,
-                        help='API requests per minute (default: 150 for premium)')
+    parser.add_argument('--rate-limit', type=int, default=config.DEFAULT_RATE_LIMIT,
+                        help=f'API requests per minute (default: {config.DEFAULT_RATE_LIMIT})')
     parser.add_argument('--output', type=str, 
                         help='Output CSV filename (default: auto-generated with timestamp)')
     parser.add_argument('--start-date', type=str, default='2025-01-01',
@@ -1383,12 +1510,12 @@ Note:
     output_dir = config.OUTPUT_DIR_MAIN
     csv_dir = os.path.join(output_dir, config.OUTPUT_DIR_CSV)  # Parent CSV directory
     csv_trending_dir = os.path.join(csv_dir, 'trending')  # For top 20 trending stocks only
-    csv_all_dir = os.path.join(csv_dir, 'all')  # For all stocks with detailed scoring breakdown
+    csv_not_trending_dir = os.path.join(csv_dir, 'not_trending')  # For non-trending stocks (score < 4.0)
     plots_dir = os.path.join(output_dir, config.OUTPUT_DIR_PLOTS)
     charts_dir = os.path.join(output_dir, config.OUTPUT_DIR_CHARTS)
 
     # Create directories if they don't exist
-    for directory in [csv_trending_dir, csv_all_dir, plots_dir, charts_dir]:
+    for directory in [csv_trending_dir, csv_not_trending_dir, plots_dir, charts_dir]:
         if not os.path.exists(directory):
             os.makedirs(directory, exist_ok=True)
             logger.info(f"Created directory: {directory}/")
@@ -1420,18 +1547,22 @@ Note:
         analyzer.save_results(top_20_df, csv_filename)
         output_filename = csv_filename
 
-    # Save ALL stocks (trending and non-trending) with detailed scoring breakdown to csv_all/ directory
-    if not all_results_df.empty:
+    # Save only NON-TRENDING stocks (score < 4.0) with detailed scoring breakdown to csv/not_trending/ directory
+    not_trending_df = all_results_df[all_results_df['score'] < 4.0].copy()
+    if not not_trending_df.empty:
+        # Sort by score descending (same as trending_charts/not_trending folder)
+        not_trending_df = not_trending_df.sort_values('score', ascending=False)
+
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
         # Include file prefix and interval in CSV filename if available
         if file_prefix:
-            csv_all_filename = os.path.join(csv_all_dir, f'all_stocks_detailed_{timestamp}_{args.interval}_{file_prefix}.csv')
+            csv_not_trending_filename = os.path.join(csv_not_trending_dir, f'not_trending_stocks_{timestamp}_{args.interval}_{file_prefix}.csv')
         else:
-            csv_all_filename = os.path.join(csv_all_dir, f'all_stocks_detailed_{timestamp}_{args.interval}.csv')
+            csv_not_trending_filename = os.path.join(csv_not_trending_dir, f'not_trending_stocks_{timestamp}_{args.interval}.csv')
 
-        logger.info(f"Saving all {len(all_results_df)} analyzed stocks with detailed breakdown to {csv_all_filename}")
-        analyzer.save_all_results(all_results_df, csv_all_filename)
+        logger.info(f"Saving {len(not_trending_df)} non-trending stocks with detailed breakdown to {csv_not_trending_filename}")
+        analyzer.save_all_results(not_trending_df, csv_not_trending_filename)
     
     # Generate visualization plots (always enabled)
     if not all_results_df.empty:
@@ -1537,39 +1668,39 @@ Note:
                 logger.warning("No trending stocks found for individual plotting")
                 print("\nNo trending stocks found (score >= 4.0) for uptrending charts.")
 
-            # 2. Create charts for NON-TRENDING stocks (score < 4.0)
+            # 2. Create charts for NOT TRENDING stocks (score < 4.0)
             if not non_trending_df.empty:
-                logger.info("Generating individual technical analysis charts for non-trending stocks")
+                logger.info("Generating individual technical analysis charts for not trending stocks")
 
-                # Sort non-trending by score (highest first)
+                # Sort not trending by score (highest first)
                 non_trending_df = non_trending_df.sort_values('score', ascending=False)
 
-                logger.info(f"Creating charts for all {len(non_trending_df)} non-trending stocks")
-                print(f"\nGenerating individual technical analysis charts for {len(non_trending_df)} non-trending stocks...")
+                logger.info(f"Creating charts for all {len(non_trending_df)} not trending stocks")
+                print(f"\nGenerating individual technical analysis charts for {len(non_trending_df)} not trending stocks...")
 
-                # Create non-trending subdirectory
-                non_trending_dir = os.path.join(base_dir, 'non_trending')
-                os.makedirs(non_trending_dir, exist_ok=True)
-                logger.info(f"Created non-trending charts subdirectory: {non_trending_dir}/")
+                # Create not_trending subdirectory
+                not_trending_dir = os.path.join(base_dir, 'not_trending')
+                os.makedirs(not_trending_dir, exist_ok=True)
+                logger.info(f"Created not_trending charts subdirectory: {not_trending_dir}/")
 
-                # Create individual plots for non-trending stocks
+                # Create individual plots for not trending stocks
                 plot_files = create_individual_plots_for_all(
                     non_trending_df,
                     analyzer.get_client(),
                     args.interval,
                     analyzer.outputsize,
-                    non_trending_dir,
+                    not_trending_dir,
                     start_date=args.start_date,
                     display_interval=display_interval
                 )
 
                 if plot_files:
                     total_charts_created += len(plot_files)
-                    logger.info(f"Non-trending charts saved to {non_trending_dir}/ directory")
-                    print(f"\n✓ {len(plot_files)} non-trending charts saved to '{non_trending_dir}/' directory")
+                    logger.info(f"Not trending charts saved to {not_trending_dir}/ directory")
+                    print(f"\n✓ {len(plot_files)} not trending charts saved to '{not_trending_dir}/' directory")
             else:
-                logger.info("No non-trending stocks to plot")
-                print("\nNo non-trending stocks to plot.")
+                logger.info("No not trending stocks to plot")
+                print("\nNo not trending stocks to plot.")
 
             # Summary
             if total_charts_created > 0:
@@ -1587,15 +1718,19 @@ Note:
         logger.warning("No analyzed stocks available for individual plotting")
         print("\nNo analyzed stocks available for individual charts.")
 
-    # Calculate and log total execution time
+    # Calculate and log total execution time in hh:mm:ss format
     total_elapsed_time = time.time() - script_start_time
+    hours, remainder = divmod(int(total_elapsed_time), 3600)
+    minutes, seconds = divmod(remainder, 60)
+    time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
     print(f"\n{'='*60}")
-    print(f"Total execution time: {total_elapsed_time:.1f} seconds ({total_elapsed_time/60:.2f} minutes)")
+    print(f"Total execution time: {time_str}")
     print(f"{'='*60}")
 
     logger.info("="*60)
     logger.info("Program completed successfully")
-    logger.info(f"Total execution time: {total_elapsed_time:.1f} seconds ({total_elapsed_time/60:.2f} minutes)")
+    logger.info(f"Total execution time: {time_str}")
     logger.info("="*60)
 
 

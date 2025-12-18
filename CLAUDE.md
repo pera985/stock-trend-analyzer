@@ -99,7 +99,7 @@ output/                                 # Main output directory
         01. AAPL_technical_analysis.png
         02. MSFT_technical_analysis.png
         ...
-      non_trending/                     # Stocks with score < 4.0
+      not_trending/                     # Stocks with score < 4.0
         01. XYZ_technical_analysis.png
         02. ABC_technical_analysis.png
         ...
@@ -109,10 +109,10 @@ output/                                 # Main output directory
 
 **CSV File Differences:**
 - **csv/trending/**: Contains only top 20 trending stocks (score ≥ 4.0), standard columns
-- **csv/all/**: Contains ALL analyzed stocks with detailed scoring breakdown columns:
+- **csv/not_trending/**: Contains only non-trending stocks (score < 4.0) with detailed scoring breakdown columns:
   - Individual score components: `ma_bullish_score`, `momentum_score`, `rsi_score`, `macd_score`, `adx_score`, `volume_score`
-  - Helps understand why stocks scored the way they did
-  - Useful for comparing near-miss stocks (e.g., score 3.5) vs trending stocks (≥ 4.0)
+  - Helps understand why stocks didn't meet the trending threshold
+  - Useful for identifying near-miss stocks (e.g., score 3.5)
 
 ## Common Commands
 
@@ -155,7 +155,7 @@ python3 stock_trend_analyzer.py --interval 5min --loop
 
 # Streamlit web dashboard (local)
 streamlit run streamlit_dashboard.py
-```
+```ER_20251215_AMC
 
 ### API Configuration
 
@@ -235,7 +235,7 @@ trending_df, all_results_df = analyzer.scan_stocks(tickers)
 - Default limit: top 20 trending stocks for uptrending charts (use `--top-n` to control)
 - CSV outputs:
   - `csv/trending/`: Top 20 trending stocks only
-  - `csv/all/`: ALL analyzed stocks with detailed scoring breakdown (ma_bullish_score, momentum_score, rsi_score, macd_score, adx_score, volume_score)
+  - `csv/not_trending/`: Non-trending stocks only (score < 4.0) with detailed scoring breakdown (ma_bullish_score, momentum_score, rsi_score, macd_score, adx_score, volume_score)
 - For intraday analysis, daily data is fetched separately for momentum calculations
 
 ### Extended Hours Pricing
@@ -409,7 +409,7 @@ output/
           │   ├── 01. AAPL_technical_analysis.png
           │   ├── 02. MSFT_technical_analysis.png
           │   └── ... (top N stocks with score ≥ 4.0)
-          └── non_trending/
+          └── not_trending/
               ├── 01. XYZ_technical_analysis.png
               ├── 02. ABC_technical_analysis.png
               └── ... (all stocks with score < 4.0)
