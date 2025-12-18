@@ -744,7 +744,7 @@ class LiveDashboard:
         colors = ['green' if data['Close'].iloc[i] >= data['Open'].iloc[i] else 'red'
                   for i in range(len(data))]
         ax2.bar(x_positions, data['Volume'], color=colors, alpha=0.65, width=0.8)
-        ax2.plot(x_positions, volume_ma_50, 'purple', linewidth=1.0, alpha=0.8, label='Vol MA50')
+        ax2.plot(x_positions, volume_ma_50, '#D40098', linewidth=1.0, alpha=0.8, label='Vol MA50')
 
         ax2_right = ax2.twinx()
         ax2_right.plot(x_positions, sma_5, 'orange', linewidth=1.0, alpha=0.8, label='SMA5')
