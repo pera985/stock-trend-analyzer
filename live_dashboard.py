@@ -246,15 +246,15 @@ class LiveDashboard:
             self.dashboard_filename = os.path.join(self.dashboard_dir, f'Live_Dashboard_{self.display_interval}_{file_prefix}.png')
             # CSV goes to csv/ directory - will be updated with cycle number during each update
             self.csv_filename_prefix = f'Top_Stocks_{self.display_interval}_{file_prefix}'
-            # Dashboard Plot goes to plots/ directory with same format as stock_analysis_plot
-            self.plot_filename = os.path.join(self.plots_dir, f'stock_analysis_plot_{self.display_interval}_{file_prefix}.png')
+            # Dashboard Plot goes to plots/ directory with timestamp
+            self.plot_filename = os.path.join(self.plots_dir, f'stock_analysis_plot_{timestamp_str}_{self.display_interval}_{file_prefix}.png')
         else:
             self.dashboard_filename = os.path.join(self.dashboard_dir, f'Live_Dashboard_{self.display_interval}.png')
             self.csv_filename_prefix = f'Top_Stocks_{self.display_interval}'
-            self.plot_filename = os.path.join(self.plots_dir, f'stock_analysis_plot_{self.display_interval}.png')
+            self.plot_filename = os.path.join(self.plots_dir, f'stock_analysis_plot_{timestamp_str}_{self.display_interval}.png')
 
         # Create figure with heatmap on left + 2x3 grid for 6 stocks
-        self.fig = plt.figure(figsize=(26, 14))
+        self.fig = plt.figure(figsize=(15, 7.5), dpi=150)
 
         # Create title with file prefix if available
         title = 'Live Stock Trend Dashboard - Top 6 Stocks by Score'
@@ -262,10 +262,10 @@ class LiveDashboard:
             title += f' from {file_prefix}'
 
         self.fig.suptitle(title,
-                         fontsize=12, fontweight='bold', y=0.995)
+                         fontsize=8, fontweight='bold', y=0.995)
 
-        # Adjust figure margins (more padding around the plots)
-        self.fig.subplots_adjust(top=0.94, bottom=0.06, left=0.08, right=0.96)
+        # Adjust figure margins (heatmap at left edge)
+        self.fig.subplots_adjust(top=0.94, bottom=0.06, left=0.02, right=0.96)
 
         # Main grid: heatmap on left (1 col), charts on right (6 cols)
         self.main_gs = gridspec.GridSpec(1, 2, figure=self.fig, width_ratios=[1, 6], wspace=0.12)
@@ -700,16 +700,16 @@ class LiveDashboard:
             if market_close_positions:
                 ax1.plot([], [], color='red', linestyle='-', linewidth=1, label='Market Close 3:00 PM', alpha=1.0)
 
-        ax1.set_ylabel('Price ($)', fontsize=8, fontweight='bold')
-        ax1.legend(loc='upper left', fontsize=7)
-        ax1.tick_params(axis='y', labelsize=7)
+        ax1.set_ylabel('Price ($)', fontsize=5, fontweight='bold')
+        ax1.legend(loc='upper left', fontsize=4)
+        ax1.tick_params(axis='y', labelsize=4)
         ax1.grid(True, alpha=0.5)
 
         # Add "Times are CT" label for intraday
         if self.interval != '1d':
             ax1.text(0.02, 0.02, 'Times are CT', transform=ax1.transAxes,
-                    fontsize=7, style='italic', ha='left', va='bottom',
-                    bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7))
+                    fontsize=4, style='italic', ha='left', va='bottom',
+                    bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.7))
 
         # Add latest price with timestamp at top right
         if result is not None:
@@ -722,8 +722,8 @@ class LiveDashboard:
 
                 price_label = f'${current_price:.2f} @ {time_str}'
                 ax1.text(0.98, 0.98, price_label, transform=ax1.transAxes,
-                        fontsize=8, fontweight='bold', ha='right', va='top',
-                        bbox=dict(boxstyle='round,pad=0.3', facecolor='yellow', alpha=0.9))
+                        fontsize=5, fontweight='bold', ha='right', va='top',
+                        bbox=dict(boxstyle='round,pad=0.2', facecolor='yellow', alpha=0.9))
 
         # Title with score and daily gain
         title = f'{score:.1f} | {ticker}'
@@ -737,7 +737,7 @@ class LiveDashboard:
             if gain_1d != 'N/A' and gain_1d is not None:
                 title += f' | {gain_1d:+.2f}%'
 
-        ax1.set_title(title, fontsize=9, fontweight='bold', pad=5)
+        ax1.set_title(title, fontsize=6, fontweight='bold', pad=2)
 
         # ============================================
         # PANEL 2: VOLUME WITH MOVING AVERAGES
@@ -754,17 +754,17 @@ class LiveDashboard:
         ax2_right.plot(x_positions, sma_5, 'orange', linewidth=1.0, alpha=0.8, label='SMA5')
         ax2_right.plot(x_positions, sma_20, 'blue', linewidth=1.0, alpha=0.8, label='SMA20')
 
-        ax2.set_ylabel('Volume', fontsize=8, fontweight='bold')
-        ax2_right.set_ylabel('Price ($)', fontsize=8, fontweight='bold')
-        ax2.tick_params(axis='y', labelsize=7)
-        ax2_right.tick_params(axis='y', labelsize=7)
+        ax2.set_ylabel('Volume', fontsize=5, fontweight='bold')
+        ax2_right.set_ylabel('Price ($)', fontsize=5, fontweight='bold')
+        ax2.tick_params(axis='y', labelsize=4)
+        ax2_right.tick_params(axis='y', labelsize=4)
         ax2.grid(True, alpha=0.5)
         ax2.ticklabel_format(style='plain', axis='y')
 
         # Add legend for volume panel (combine both axes)
         lines1, labels1 = ax2.get_legend_handles_labels()
         lines2, labels2 = ax2_right.get_legend_handles_labels()
-        ax2.legend(lines1 + lines2, labels1 + labels2, loc='upper left', fontsize=6)
+        ax2.legend(lines1 + lines2, labels1 + labels2, loc='upper left', fontsize=4)
 
         # ============================================
         # PANEL 3: RSI
@@ -787,8 +787,8 @@ class LiveDashboard:
         ax3.fill_between(x_positions, 70, 100, alpha=0.1, color='red')
         ax3.fill_between(x_positions, 0, 30, alpha=0.1, color='green')
 
-        ax3.set_ylabel('RSI', fontsize=8, fontweight='bold')
-        ax3.tick_params(axis='y', labelsize=7)
+        ax3.set_ylabel('RSI', fontsize=5, fontweight='bold')
+        ax3.tick_params(axis='y', labelsize=4)
         ax3.set_ylim(0, 100)
         ax3.grid(True, alpha=0.5)
 
@@ -797,7 +797,7 @@ class LiveDashboard:
             current_rsi = rsi.iloc[-1]
             rsi_color = get_rsi_color(current_rsi)
             ax3.text(0.98, 0.95, f'RSI: {current_rsi:.1f}',
-                    transform=ax3.transAxes, fontsize=8, fontweight='bold',
+                    transform=ax3.transAxes, fontsize=5, fontweight='bold',
                     ha='right', va='top', color=rsi_color,
                     bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
@@ -807,19 +807,19 @@ class LiveDashboard:
 
         # Velocity line (left Y axis) - blue, same as smoothed price
         ax4.plot(x_positions, velocity.values, color=VELOCITY_COLOR,
-                 linewidth=1.2, label='Velocity', alpha=1.0)
+                 linewidth=1, label='Velocity', alpha=1.0)
         ax4.axhline(y=0, color=VELOCITY_COLOR, linestyle='-', linewidth=0.8, alpha=1.0)
-        ax4.set_ylabel('Vel', color=VELOCITY_COLOR, fontsize=7)
-        ax4.tick_params(axis='y', labelcolor=VELOCITY_COLOR, labelsize=6)
+        ax4.set_ylabel('Vel', color=VELOCITY_COLOR, fontsize=4)
+        ax4.tick_params(axis='y', labelcolor=VELOCITY_COLOR, labelsize=4)
         ax4.grid(True, alpha=0.3)
 
         # Acceleration line (right Y axis) - gold/amber
         ax4_right = ax4.twinx()
         ax4_right.plot(x_positions, acceleration.values, color=ACCEL_COLOR,
-                       linewidth=1.2, label='Acceleration', alpha=0.8)
+                       linewidth=1, label='Acceleration', alpha=0.8)
         ax4_right.axhline(y=0, color=ACCEL_COLOR, linestyle='-', linewidth=0.8, alpha=1.0)
-        ax4_right.set_ylabel('Acc', color=ACCEL_COLOR, fontsize=7)
-        ax4_right.tick_params(axis='y', labelcolor=ACCEL_COLOR, labelsize=6)
+        ax4_right.set_ylabel('Acc', color=ACCEL_COLOR, fontsize=4)
+        ax4_right.tick_params(axis='y', labelcolor=ACCEL_COLOR, labelsize=4)
 
         # Shaded regions based on velocity/acceleration sign combinations
         # Same colors as inflection_detector
@@ -869,7 +869,7 @@ class LiveDashboard:
 
         # Note: Dashed vertical lines at quadrant changes removed - only velocity zero crossings shown
 
-        ax4.set_xlabel('Time', fontsize=8, fontweight='bold')
+        ax4.set_xlabel('Time', fontsize=5, fontweight='bold')
 
         # ============================================
         # X-AXIS FORMATTING (ALL PANELS)
@@ -902,7 +902,7 @@ class LiveDashboard:
         for ax in ax_tuple:
             ax.set_xlim(0, x_max)
             ax.set_xticks(tick_positions)
-            ax.set_xticklabels(tick_labels, rotation=45, ha='right', fontsize=7)
+            ax.set_xticklabels(tick_labels, rotation=45, ha='right', fontsize=4)
 
             # Add earnings markers
             if earnings_positions:
@@ -913,9 +913,9 @@ class LiveDashboard:
                     marker_y = y_min + (y_range * 0.05)
                     ax.text(earnings_pos, marker_y, 'E',
                            ha='center', va='center',
-                           fontsize=9, fontweight='bold', color='white',
-                           bbox=dict(boxstyle='circle,pad=0.5', facecolor='purple',
-                                   edgecolor='yellow', linewidth=1.5, alpha=0.95),
+                           fontsize=6, fontweight='bold', color='white',
+                           bbox=dict(boxstyle='circle,pad=0.3', facecolor='purple',
+                                   edgecolor='yellow', linewidth=1, alpha=0.95),
                            zorder=1000)
 
             # Add pre-market markers
@@ -944,7 +944,7 @@ class LiveDashboard:
 
         if not self.all_results:
             self.heatmap_ax.text(0.5, 0.5, 'No data', ha='center', va='center',
-                                fontsize=12, transform=self.heatmap_ax.transAxes)
+                                fontsize=8, transform=self.heatmap_ax.transAxes)
             self.heatmap_ax.axis('off')
             return
 
@@ -986,22 +986,22 @@ class LiveDashboard:
         # Add ticker labels and gain percentages
         for i, (ticker, score, gain) in enumerate(zip(tickers, scores, daily_gains)):
             # Ticker label on the left
-            self.heatmap_ax.text(-0.3, i, ticker, ha='right', va='center', fontsize=8, fontweight='bold')
+            self.heatmap_ax.text(-0.3, i, ticker, ha='right', va='center', fontsize=5, fontweight='bold')
             # Score value inside the bar
             self.heatmap_ax.text(score - 0.1, i, f'{score:.1f}', ha='right', va='center',
-                                fontsize=7, color='white', fontweight='bold')
+                                fontsize=4, color='white', fontweight='bold')
             # Daily gain on the right
             gain_color = 'green' if gain >= 0 else 'red'
             self.heatmap_ax.text(6.2, i, f'{gain:+.1f}%', ha='left', va='center',
-                                fontsize=7, color=gain_color, fontweight='bold')
+                                fontsize=4, color=gain_color, fontweight='bold')
 
         # Formatting
         self.heatmap_ax.set_xlim(-0.5, 7)
         self.heatmap_ax.set_ylim(-0.5, len(tickers) - 0.5)
         self.heatmap_ax.invert_yaxis()  # Highest score at top
         self.heatmap_ax.set_yticks([])
-        self.heatmap_ax.set_xlabel('Score (out of 6)', fontsize=9, fontweight='bold')
-        self.heatmap_ax.set_title('All Stocks by Score\n(Color = Daily Gain)', fontsize=10, fontweight='bold')
+        self.heatmap_ax.set_xlabel('Score (out of 6)', fontsize=6, fontweight='bold')
+        self.heatmap_ax.set_title('All Stocks by Score\n(Color = Daily Gain)', fontsize=6, fontweight='bold')
         self.heatmap_ax.axvline(x=4.0, color='orange', linestyle='--', linewidth=1.5, alpha=0.8, label='Threshold')
         self.heatmap_ax.grid(axis='x', alpha=0.3)
 
@@ -1035,7 +1035,7 @@ class LiveDashboard:
             title += f' | Last Update: {self.last_update.strftime("%Y-%m-%d %H:%M:%S")} | Cycle: {self.cycle_count}'
 
             self.fig.suptitle(title,
-                             fontsize=10, fontweight='bold', y=0.995)
+                             fontsize=6, fontweight='bold', y=0.995)
 
         # Save top 6 stocks to CSV file (overwrites previous version)
         # Use same format as trending_stocks CSV from main analyzer
@@ -1314,8 +1314,8 @@ class LiveDashboard:
                 plt.tight_layout()
                 plot_fig.savefig(self.plot_filename, dpi=150, bbox_inches='tight', facecolor='white')
 
-                # Show the plot on screen (don't close it)
-                plot_fig.show()
+                # Close the figure without displaying (save only)
+                plt.close(plot_fig)
 
                 logger.info(f"Summary plot saved to: {self.plot_filename}")
             except Exception as e:
@@ -1355,6 +1355,23 @@ class LiveDashboard:
             print("\n\n" + "="*80)
             print("Dashboard stopped by user")
             print(f"Total cycles completed: {self.cycle_count}")
+
+            # Save both dashboards before closing
+            try:
+                self.fig.savefig(self.dashboard_filename, dpi=150, bbox_inches='tight', facecolor='white')
+                print(f"Live dashboard saved to: {self.dashboard_filename}")
+            except Exception as e:
+                print(f"Error saving live dashboard: {e}")
+
+            # Save stock trend analysis dashboard if it exists
+            try:
+                fig2 = plt.figure(2)
+                if fig2.get_axes():  # Only save if it has content
+                    fig2.savefig(self.plot_filename, dpi=150, bbox_inches='tight', facecolor='white')
+                    print(f"Stock trend analysis dashboard saved to: {self.plot_filename}")
+            except Exception as e:
+                print(f"Error saving stock trend analysis dashboard: {e}")
+
             print("="*80)
             # Close both figures
             plt.close(self.fig)  # Main dashboard (figure 1)
