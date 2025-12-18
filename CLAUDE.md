@@ -89,12 +89,13 @@ output/                                 # Main output directory
   csv/                                  # CSV output files
     trending/                           # Top 20 trending stocks only (score ≥ 4.0)
       trending_stocks_TIMESTAMP_INTERVAL_PREFIX.csv
-    all/                                # ALL analyzed stocks with detailed scoring breakdown
-      all_stocks_detailed_TIMESTAMP_INTERVAL_PREFIX.csv
+    not_trending/                       # Non-trending stocks only (score < 4.0)
+      not_trending_stocks_TIMESTAMP_INTERVAL_PREFIX.csv
   plots/                                # Dashboard visualizations
     stock_analysis_plot_TIMESTAMP_INTERVAL_PREFIX.png
-  trending_charts/                      # Individual technical charts
-    PREFIX_INTERVAL_TIMESTAMP/
+  trending_charts/                      # Individual technical charts and live dashboard
+    Live_Dashboard_TIMESTAMP_INTERVAL_PREFIX.png  # Live dashboard (--loop mode)
+    PREFIX_INTERVAL_TIMESTAMP/          # Individual charts (non-loop mode)
       uptrending/                       # Stocks with score ≥ 4.0
         01. AAPL_technical_analysis.png
         02. MSFT_technical_analysis.png
@@ -400,7 +401,16 @@ validate_config()        # Validates all configuration values
 
 ## Final Directory Structure
 
-When --loop is not requested:
+When --loop is requested (live dashboard mode):
+```
+output/
+  └── trending_charts/
+      └── Live_Dashboard_{timestamp}_{interval}_{file_prefix}.png
+  └── plots/
+      └── stock_analysis_plot_{timestamp}_{interval}_{file_prefix}.png
+```
+
+When --loop is not requested (batch analysis mode):
 ```
 output/
   └── trending_charts/
@@ -417,7 +427,8 @@ output/
 
 ### Key Features
 ✅ Uptrending folder - Contains top N trending stocks (respects --top-n parameter, default 20)
-✅ Non-trending folder - Contains ALL stocks that didn't meet the 4.0 threshold
+✅ Not trending folder - Contains ALL stocks that didn't meet the 4.0 threshold
 ✅ Ranked by score - Both folders have numbered charts sorted by score
 ✅ Complete visibility - You can now review all analyzed stocks, not just the winners
-✅ Clear organization - Easy to compare uptrending vs non-trending patterns
+✅ Clear organization - Easy to compare uptrending vs not_trending patterns
+✅ Live dashboard - Saves both Live_Dashboard and stock_analysis_plot on exit (Ctrl+C)
