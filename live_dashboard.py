@@ -228,28 +228,24 @@ class LiveDashboard:
         self.csv_dir = os.path.join(output_dir, config.OUTPUT_DIR_CSV)
         self.plots_dir = os.path.join(output_dir, config.OUTPUT_DIR_PLOTS)
 
-        # Add timestamp to folder name
+        # Add timestamp to filenames
         timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
-        if file_prefix:
-            self.dashboard_dir = os.path.join(self.charts_dir, f'{file_prefix}_{self.display_interval}_{timestamp_str}')
-        else:
-            self.dashboard_dir = os.path.join(self.charts_dir, f'Custom_{self.display_interval}_{timestamp_str}')
 
         # Create all necessary directories
-        os.makedirs(self.dashboard_dir, exist_ok=True)
+        os.makedirs(self.charts_dir, exist_ok=True)
         os.makedirs(self.csv_dir, exist_ok=True)
         os.makedirs(self.plots_dir, exist_ok=True)
 
         # Set filenames (will be reused for all updates)
         if file_prefix:
-            # Live Dashboard stays in trending_charts/[file_prefix]_[display_interval]/
-            self.dashboard_filename = os.path.join(self.dashboard_dir, f'Live_Dashboard_{self.display_interval}_{file_prefix}.png')
+            # Live Dashboard goes directly to trending_charts/ with timestamp
+            self.dashboard_filename = os.path.join(self.charts_dir, f'Live_Dashboard_{timestamp_str}_{self.display_interval}_{file_prefix}.png')
             # CSV goes to csv/ directory - will be updated with cycle number during each update
             self.csv_filename_prefix = f'Top_Stocks_{self.display_interval}_{file_prefix}'
             # Dashboard Plot goes to plots/ directory with timestamp
             self.plot_filename = os.path.join(self.plots_dir, f'stock_analysis_plot_{timestamp_str}_{self.display_interval}_{file_prefix}.png')
         else:
-            self.dashboard_filename = os.path.join(self.dashboard_dir, f'Live_Dashboard_{self.display_interval}.png')
+            self.dashboard_filename = os.path.join(self.charts_dir, f'Live_Dashboard_{timestamp_str}_{self.display_interval}.png')
             self.csv_filename_prefix = f'Top_Stocks_{self.display_interval}'
             self.plot_filename = os.path.join(self.plots_dir, f'stock_analysis_plot_{timestamp_str}_{self.display_interval}.png')
 
@@ -720,7 +716,7 @@ class LiveDashboard:
                 current_time_ct = datetime.now(ct_tz)
                 time_str = current_time_ct.strftime('%H:%M:%S CT')
 
-                price_label = f'${current_price:.2f} @ {time_str}'
+                price_label = f'${current_price:.1f} @ {time_str}'
                 ax1.text(0.98, 0.98, price_label, transform=ax1.transAxes,
                         fontsize=5, fontweight='bold', ha='right', va='top',
                         bbox=dict(boxstyle='round,pad=0.2', facecolor='yellow', alpha=0.9))
@@ -759,7 +755,8 @@ class LiveDashboard:
         ax2.tick_params(axis='y', labelsize=4)
         ax2_right.tick_params(axis='y', labelsize=4)
         ax2.grid(True, alpha=0.5)
-        ax2.ticklabel_format(style='plain', axis='y')
+        # Format volume axis in K (thousands)
+        ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x/1000:.0f}K'))
 
         # Add legend for volume panel (combine both axes)
         lines1, labels1 = ax2.get_legend_handles_labels()
@@ -902,7 +899,7 @@ class LiveDashboard:
         for ax in ax_tuple:
             ax.set_xlim(0, x_max)
             ax.set_xticks(tick_positions)
-            ax.set_xticklabels(tick_labels, rotation=45, ha='right', fontsize=4)
+            ax.set_xticklabels(tick_labels, rotation=45, ha='right', fontsize=5)
 
             # Add earnings markers
             if earnings_positions:
@@ -986,14 +983,14 @@ class LiveDashboard:
         # Add ticker labels and gain percentages
         for i, (ticker, score, gain) in enumerate(zip(tickers, scores, daily_gains)):
             # Ticker label on the left
-            self.heatmap_ax.text(-0.3, i, ticker, ha='right', va='center', fontsize=5, fontweight='bold')
+            self.heatmap_ax.text(-0.3, i, ticker, ha='right', va='center', fontsize=7, fontweight='bold')
             # Score value inside the bar
             self.heatmap_ax.text(score - 0.1, i, f'{score:.1f}', ha='right', va='center',
-                                fontsize=4, color='white', fontweight='bold')
+                                fontsize=6, color='white', fontweight='bold')
             # Daily gain on the right
             gain_color = 'green' if gain >= 0 else 'red'
             self.heatmap_ax.text(6.2, i, f'{gain:+.1f}%', ha='left', va='center',
-                                fontsize=4, color=gain_color, fontweight='bold')
+                                fontsize=6, color=gain_color, fontweight='bold')
 
         # Formatting
         self.heatmap_ax.set_xlim(-0.5, 7)
